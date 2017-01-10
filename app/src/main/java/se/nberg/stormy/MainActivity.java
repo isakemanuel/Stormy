@@ -6,12 +6,20 @@ import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.support.v7.app.ActionBarActivity;
 import android.util.Log;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import butterknife.BindView;
+import butterknife.BindViews;
+import butterknife.ButterKnife;
+import butterknife.OnClick;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -26,17 +34,42 @@ public class MainActivity extends ActionBarActivity {
     public static final String TAG = MainActivity.class.getSimpleName();
     private CurrentWeather mCurrentWeather;
 
+    @BindView(R.id.refreshImageView) ImageView mRefreshImageView;
+    @BindView(R.id.temperatureValue) TextView mTemperatureValue;
+    @BindView(R.id.timeLabel) TextView mTimeLabel;
+    @BindView(R.id.humidityValue) TextView mHumidityValue;
+    @BindView(R.id.precipValue) TextView mPrecipValue;
+    @BindView(R.id.summaryLabel) TextView mSummaryLabel;
+    @BindView(R.id.iconImageView) ImageView mIconImageView;
+    @BindView(R.id.progressBar) ProgressBar mProgressBar;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        ButterKnife.bind(this);
 
+        getForecast();
+
+        mRefreshImageView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                getForecast();
+            }
+        });
+
+
+        Log.d(TAG, "Main UI code is running!");
+    }
+
+    private void getForecast() {
         final String API_KEY = getString(R.string.api_key);
         double latitude = 63.8323;
         double longitude = 20.2512;
         String forecastUrl = "https://api.forecast.io/forecast/" + API_KEY + "/" + latitude + "," + longitude + "?units=si";
 
         if (isNetworkAvailable()) {
+            toggleRefresh();
             OkHttpClient client = new OkHttpClient();
             Request request = new Request.Builder()
                     .url(forecastUrl)
@@ -46,16 +79,35 @@ public class MainActivity extends ActionBarActivity {
             call.enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            toggleRefresh();
+                        }
+                    });
+                    alertUserAboutError();
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            toggleRefresh();
+                        }
+                    });
                     try {
                         String jsonData = response.body().string();
                         Log.v(TAG, jsonData);
                         if (response.isSuccessful()) {
                             mCurrentWeather = getCurrentDetails(jsonData);
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    updateDisplay();
+                                }
+                            });
+
                         } else {
                             alertUserAboutError();
                         }
@@ -71,8 +123,27 @@ public class MainActivity extends ActionBarActivity {
             Toast.makeText(this, getString(R.string.network_unavailable_message),
                     Toast.LENGTH_LONG).show();
         }
+    }
 
-        Log.d(TAG, "Main UI code is running!");
+    private void toggleRefresh() {
+        if (mProgressBar.getVisibility() == View.INVISIBLE){
+            mProgressBar.setVisibility(View.VISIBLE);
+            mRefreshImageView.setVisibility(View.INVISIBLE);
+        }else{
+            mProgressBar.setVisibility(View.INVISIBLE);
+            mRefreshImageView.setVisibility(View.VISIBLE);
+
+        }
+    }
+
+    private void updateDisplay() {
+        mTemperatureValue.setText(mCurrentWeather.getTemperature() + "");
+        mTimeLabel.setText("At " + mCurrentWeather.getFormattedTime() + " it will be");
+        mHumidityValue.setText(mCurrentWeather.getHumidity() + "");
+        mPrecipValue.setText(mCurrentWeather.getPrecipChanceAsPercentage() + "%");
+        mSummaryLabel.setText(mCurrentWeather.getSummary());
+        mIconImageView.setImageDrawable(getResources().getDrawable(mCurrentWeather.getIconId()));
+
     }
 
     private CurrentWeather getCurrentDetails(String jsonData) throws JSONException {
@@ -88,7 +159,7 @@ public class MainActivity extends ActionBarActivity {
         currentWeather.setHumidity(currently.getDouble("humidity"));
         currentWeather.setPrecipChance(currently.getDouble("precipProbability"));
         currentWeather.setSummary(currently.getString("summary"));
-        currentWeather.setTimezone(currently.getString("timezone"));
+        currentWeather.setTimezone(forecast.getString("timezone"));
 
         Log.d(TAG, currentWeather.getFormattedTime());
 
